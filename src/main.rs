@@ -59,6 +59,7 @@
 //! 実行方法: `cargo run --release`
 
 mod audio;
+mod font;
 
 use std::ffi::CString;
 
@@ -70,8 +71,6 @@ use winit::event::{ElementState, Event, VirtualKeyCode, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 480;
 /// Phase 0の簡易ステージ長(秒相当、実際はフレーム数で近似)。
 const STAGE_FRAMES: u32 = 60 * 60;
 
@@ -359,12 +358,18 @@ impl GameState {
 
 #[allow(unused_assignments, unused_variables)]
 fn main() {
+    println!("=== sample-maid 操作方法 ===");
+    println!("マウス移動: 操作キャラクター移動   V: メイド/トラさん切替   Tab: 2人プレイ切替");
+    println!("Z/F1: 味方化   X/F2: 石化   C/F3: サンダーボルト   H/F10: 助っ人登場   3つ同時押し: ブラックホール");
+    println!("Esc または ウィンドウのXボタン: 終了");
+
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("sample-maid: magical-girl maid-cafe 3D online game (Phase 0: 2D sprite placeholder)")
-        .with_inner_size(winit::dpi::LogicalSize::new(WIDTH, HEIGHT))
+        .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
         .build(&event_loop)
         .expect("create window");
+    let window_width = window.inner_size().width.max(1) as f32;
 
     let mut renderer = unsafe { Renderer::new(&window) }.expect("create Vulkan renderer");
     let mut state = GameState::new();
@@ -383,7 +388,7 @@ fn main() {
             Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
                 // マウスX座標をウィンドウ幅で正規化してNDC(-1.0〜1.0)へ
                 // マッピングする(1人プレイのメイドちゃん操作、ユーザー指示)。
-                let ndc_x = (position.x as f32 / WIDTH as f32) * 2.0 - 1.0;
+                let ndc_x = (position.x as f32 / window_width) * 2.0 - 1.0;
                 if !state.two_player {
                     state.set_solo_x_from_mouse(ndc_x);
                 }
@@ -460,6 +465,7 @@ struct Renderer {
     assist_flash_descriptor_set: vk::DescriptorSet,
     enemy_notally_descriptor_set: vk::DescriptorSet,
     enemy_ally_descriptor_set: vk::DescriptorSet,
+    hud_descriptor_set: vk::DescriptorSet,
     vertex_buffer: vk::Buffer,
     vertex_buffer_memory: vk::DeviceMemory,
     command_pool: vk::CommandPool,
@@ -475,17 +481,22 @@ struct Renderer {
     _assist_flash_texture_image: vk::Image,
     _enemy_notally_texture_image: vk::Image,
     _enemy_ally_texture_image: vk::Image,
+    _hud_texture_image: vk::Image,
     sampler: vk::Sampler,
 }
 
 /// 固定スプライト(メイド・助っ人・魔女・HPバー2本・アシストフラッシュ)
-/// +雑魚敵`ENEMY_COUNT`体を毎フレーム描画する。
+/// +雑魚敵`ENEMY_COUNT`体+HUDバナー1枚を毎フレーム描画する。
 const FIXED_SPRITE_COUNT: usize = 6;
-const DRAWN_SPRITE_COUNT: usize = FIXED_SPRITE_COUNT + ENEMY_COUNT;
+const ENEMY_SPRITE_OFFSET: usize = FIXED_SPRITE_COUNT;
+const HUD_SPRITE_INDEX: usize = ENEMY_SPRITE_OFFSET + ENEMY_COUNT;
+const DRAWN_SPRITE_COUNT: usize = HUD_SPRITE_INDEX + 1;
 /// 一意のテクスチャ数(雑魚敵は味方化状態に応じて2種のテクスチャの
-/// いずれかを描画時に選ぶため、`DRAWN_SPRITE_COUNT`より少ない)。
-const TEXTURE_COUNT: usize = FIXED_SPRITE_COUNT + 2;
+/// いずれかを描画時に選ぶため、`DRAWN_SPRITE_COUNT`より少ない、+HUDバナー)。
+const TEXTURE_COUNT: usize = FIXED_SPRITE_COUNT + 3;
 const VERTS_PER_SPRITE: usize = 6;
+const HUD_TEXT: &str = "MOUSE MOVE  V CHANGE CHARACTER  TAB 2P  ESC/X CLOSE";
+const HUD_HEIGHT_NDC: f32 = 0.08;
 
 impl Renderer {
     unsafe fn new(window: &winit::window::Window) -> Result<Self, String> {
@@ -537,7 +548,8 @@ impl Renderer {
             .copied()
             .unwrap_or(surface_formats[0]);
         let present_mode = vk::PresentModeKHR::FIFO;
-        let extent = vk::Extent2D { width: WIDTH, height: HEIGHT };
+        let window_size = window.inner_size();
+        let extent = vk::Extent2D { width: window_size.width.max(1), height: window_size.height.max(1) };
         let image_count = (surface_caps.min_image_count + 1).min(if surface_caps.max_image_count > 0 { surface_caps.max_image_count } else { u32::MAX });
 
         let swapchain_info = vk::SwapchainCreateInfoKHR::builder()
@@ -624,6 +636,8 @@ impl Renderer {
         let (assist_flash_image, assist_flash_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 255, g: 255, b: 255, a: 255 })?;
         let (enemy_notally_image, enemy_notally_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 150, g: 50, b: 170, a: 255 })?;
         let (enemy_ally_image, enemy_ally_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 90, g: 200, b: 230, a: 255 })?;
+        let hud_texture = font::render_text_banner(HUD_TEXT, 3, Rgba8 { r: 255, g: 255, b: 255, a: 255 }, Rgba8 { r: 10, g: 10, b: 15, a: 255 });
+        let (hud_image, hud_view) = create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &hud_texture)?;
 
         let sampler_info = vk::SamplerCreateInfo::builder().mag_filter(vk::Filter::NEAREST).min_filter(vk::Filter::NEAREST);
         let sampler = device.create_sampler(&sampler_info, None).map_err(|e| e.to_string())?;
@@ -655,7 +669,8 @@ impl Renderer {
             assist_flash_descriptor_set,
             enemy_notally_descriptor_set,
             enemy_ally_descriptor_set,
-        ) = (sets[0], sets[1], sets[2], sets[3], sets[4], sets[5], sets[6], sets[7]);
+            hud_descriptor_set,
+        ) = (sets[0], sets[1], sets[2], sets[3], sets[4], sets[5], sets[6], sets[7], sets[8]);
 
         for (set, view) in [
             (maid_descriptor_set, maid_view),
@@ -666,6 +681,7 @@ impl Renderer {
             (assist_flash_descriptor_set, assist_flash_view),
             (enemy_notally_descriptor_set, enemy_notally_view),
             (enemy_ally_descriptor_set, enemy_ally_view),
+            (hud_descriptor_set, hud_view),
         ] {
             let image_info = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -787,6 +803,7 @@ impl Renderer {
             assist_flash_descriptor_set,
             enemy_notally_descriptor_set,
             enemy_ally_descriptor_set,
+            hud_descriptor_set,
             vertex_buffer,
             vertex_buffer_memory,
             command_pool,
@@ -802,6 +819,7 @@ impl Renderer {
             _assist_flash_texture_image: assist_flash_image,
             _enemy_notally_texture_image: enemy_notally_image,
             _enemy_ally_texture_image: enemy_ally_image,
+            _hud_texture_image: hud_image,
             sampler,
         })
     }
@@ -831,8 +849,9 @@ impl Renderer {
         sprites_ndc[4] = state.witch_hp_bar_ndc();
         sprites_ndc[5] = assist_flash_ndc;
         for i in 0..ENEMY_COUNT {
-            sprites_ndc[FIXED_SPRITE_COUNT + i] = state.enemy_dest_ndc(i);
+            sprites_ndc[ENEMY_SPRITE_OFFSET + i] = state.enemy_dest_ndc(i);
         }
+        sprites_ndc[HUD_SPRITE_INDEX] = [-1.0, 1.0 - HUD_HEIGHT_NDC, 1.0, 1.0];
         let mut all_verts = [Vertex { pos: [0.0; 3], uv: [0.0; 2] }; DRAWN_SPRITE_COUNT * VERTS_PER_SPRITE];
         for (i, ndc) in sprites_ndc.iter().enumerate() {
             let verts = quad_vertices(*ndc);
@@ -858,20 +877,17 @@ impl Renderer {
         self.device.cmd_bind_pipeline(self.command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         self.device.cmd_bind_vertex_buffers(self.command_buffer, 0, &[self.vertex_buffer], &[0]);
 
-        let mut sets = [
-            self.maid_descriptor_set,
-            self.helper_descriptor_set,
-            self.witch_descriptor_set,
-            self.maid_hp_descriptor_set,
-            self.witch_hp_descriptor_set,
-            self.assist_flash_descriptor_set,
-            self.enemy_notally_descriptor_set,
-            self.enemy_notally_descriptor_set,
-            self.enemy_notally_descriptor_set,
-        ];
+        let mut sets = [self.enemy_notally_descriptor_set; DRAWN_SPRITE_COUNT];
+        sets[0] = self.maid_descriptor_set;
+        sets[1] = self.helper_descriptor_set;
+        sets[2] = self.witch_descriptor_set;
+        sets[3] = self.maid_hp_descriptor_set;
+        sets[4] = self.witch_hp_descriptor_set;
+        sets[5] = self.assist_flash_descriptor_set;
+        sets[HUD_SPRITE_INDEX] = self.hud_descriptor_set;
         for i in 0..ENEMY_COUNT {
             if state.enemies[i].is_ally {
-                sets[FIXED_SPRITE_COUNT + i] = self.enemy_ally_descriptor_set;
+                sets[ENEMY_SPRITE_OFFSET + i] = self.enemy_ally_descriptor_set;
             }
         }
         for (i, &set) in sets.iter().enumerate() {
@@ -962,21 +978,34 @@ unsafe fn create_solid_texture(
     queue_family_index: u32,
     color: Rgba8,
 ) -> Result<(vk::Image, vk::ImageView), String> {
-    let texture = TextureRgba8 { width: 1, height: 1, pixels: vec![color] };
-    const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
+    create_texture_from_rgba(device, memory_properties, queue, queue_family_index, &TextureRgba8 { width: 1, height: 1, pixels: vec![color] })
+}
 
-    let tex_bytes_size = 4u64;
+/// 任意サイズのRGBA8テクスチャを実際にアップロードする(`create_solid_texture`
+/// の1x1専用実装を一般化したもの、HUDバナー画像等の任意画像に使う)。
+unsafe fn create_texture_from_rgba(
+    device: &ash::Device,
+    memory_properties: &vk::PhysicalDeviceMemoryProperties,
+    queue: vk::Queue,
+    queue_family_index: u32,
+    texture: &TextureRgba8,
+) -> Result<(vk::Image, vk::ImageView), String> {
+    const FORMAT: vk::Format = vk::Format::R8G8B8A8_UNORM;
+    let (width, height) = (texture.width, texture.height);
+
+    let tex_bytes_size = (width as u64) * (height as u64) * 4;
     let (staging_buffer, staging_memory) = create_host_visible_buffer(device, memory_properties, tex_bytes_size, vk::BufferUsageFlags::TRANSFER_SRC)?;
     let ptr = device.map_memory(staging_memory, 0, tex_bytes_size, vk::MemoryMapFlags::empty()).map_err(|e| e.to_string())?;
-    let dst = std::slice::from_raw_parts_mut(ptr as *mut u8, 4);
-    let p = texture.pixels[0];
-    dst.copy_from_slice(&[p.r, p.g, p.b, p.a]);
+    let dst = std::slice::from_raw_parts_mut(ptr as *mut u8, tex_bytes_size as usize);
+    for (i, p) in texture.pixels.iter().enumerate() {
+        dst[i * 4..i * 4 + 4].copy_from_slice(&[p.r, p.g, p.b, p.a]);
+    }
     device.unmap_memory(staging_memory);
 
     let image_info = vk::ImageCreateInfo::builder()
         .image_type(vk::ImageType::TYPE_2D)
         .format(FORMAT)
-        .extent(vk::Extent3D { width: 1, height: 1, depth: 1 })
+        .extent(vk::Extent3D { width, height, depth: 1 })
         .mip_levels(1)
         .array_layers(1)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -1020,7 +1049,7 @@ unsafe fn create_solid_texture(
         buffer_image_height: 0,
         image_subresource: vk::ImageSubresourceLayers { aspect_mask: vk::ImageAspectFlags::COLOR, mip_level: 0, base_array_layer: 0, layer_count: 1 },
         image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
-        image_extent: vk::Extent3D { width: 1, height: 1, depth: 1 },
+        image_extent: vk::Extent3D { width, height, depth: 1 },
     };
     device.cmd_copy_buffer_to_image(cmd, staging_buffer, image, vk::ImageLayout::TRANSFER_DST_OPTIMAL, &[copy_region]);
     let to_read = vk::ImageMemoryBarrier::builder()
