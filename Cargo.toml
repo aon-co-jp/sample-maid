@@ -1,0 +1,16 @@
+[package]
+name = "sample-maid"
+version = "0.1.0"
+edition = "2021"
+authors = ["aon-co-jp"]
+license = "MIT"
+repository = "https://github.com/aon-co-jp/sample-maid"
+description = "Magical-girl maid-cafe 3D online game prototype (Phase 0: 2D sprite placeholder scene), built on open-directx's DXBC->SPIR-V translated sprite pipeline. Features a helper character (Torajiro-style) usable in 2-player mode or as a once-per-stage AI assist."
+
+[dependencies]
+ash = { version = "0.37", default-features = false, features = ["loaded"] }
+ash-window = "0.12"
+raw-window-handle = "0.5"
+winit = "0.28"
+directx-shader-translate = { path = "../open-directx/crates/directx-shader-translate" }
+directx-graphics-vulkan = { path = "../open-directx/crates/directx-graphics-vulkan" }
