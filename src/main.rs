@@ -51,7 +51,14 @@
 //! オンライン・複数プレイヤーでの共有・本格的な会話/イベントによる
 //! 味方化(現在は単純な近接時間のみ)は未実装。
 //!
+//! BGM(ユーザー指示、2026-08-10): トラさん=洋風で間を意識したゆったり
+//! した旋律・メイドちゃん=電子ポップ調の速い旋律という、それぞれ完全新規
+//! のオリジナル曲を`audio.rs`で作曲し、Vキーでの操作キャラクター切替に
+//! 応じて再生中のBGMも切り替わる。
+//!
 //! 実行方法: `cargo run --release`
+
+mod audio;
 
 use std::ffi::CString;
 
@@ -350,6 +357,7 @@ impl GameState {
     }
 }
 
+#[allow(unused_assignments, unused_variables)]
 fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -360,6 +368,11 @@ fn main() {
 
     let mut renderer = unsafe { Renderer::new(&window) }.expect("create Vulkan renderer");
     let mut state = GameState::new();
+
+    // BGM再生ハンドルはイベントループが動いている間ずっと保持する
+    // (dropすると再生が止まる)。Vキーでの操作キャラクター切替に応じて
+    // 再代入し、旧テーマを止めて新テーマを再生する。
+    let mut bgm = audio::play_theme(audio::Theme::Maid);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
@@ -379,8 +392,9 @@ fn main() {
                 let pressed = input.state == ElementState::Pressed;
                 match input.virtual_keycode {
                     // 3つのアクションボタン、P1(Z/X/C, F1/F2/F3)とP2
-                    // (B/N/M, F10/F11/F12)は同じ効果を共有する(協力プレイ)。
-                    Some(VirtualKeyCode::Z) | Some(VirtualKeyCode::F1) | Some(VirtualKeyCode::B) | Some(VirtualKeyCode::F10) => {
+                    // (N/M, F11/F12)は同じ効果を共有する(協力プレイ)。
+                    // 味方化はZ/F1のみ(B/F10は助っ人登場専用キーへ変更済み)。
+                    Some(VirtualKeyCode::Z) | Some(VirtualKeyCode::F1) => {
                         state.action_befriend_held = pressed;
                     }
                     Some(VirtualKeyCode::X) | Some(VirtualKeyCode::F2) | Some(VirtualKeyCode::N) | Some(VirtualKeyCode::F11) => {
@@ -389,11 +403,21 @@ fn main() {
                     Some(VirtualKeyCode::C) | Some(VirtualKeyCode::F3) | Some(VirtualKeyCode::M) | Some(VirtualKeyCode::F12) => {
                         state.action_thunder_held = pressed;
                     }
+                    // 助っ人「風天のトラさん」登場専用キー(1ステージに1回まで、
+                    // 既存のアシスト回数制限を共有する)。
+                    Some(VirtualKeyCode::H) | Some(VirtualKeyCode::F10) if pressed => state.summon_helper_assist(),
                     // 2人プレイ: テンキー矢印(Numpad4/Numpad6)で助っ人を移動。
                     Some(VirtualKeyCode::Numpad4) => state.helper_left_held = pressed,
                     Some(VirtualKeyCode::Numpad6) => state.helper_right_held = pressed,
                     Some(VirtualKeyCode::Tab) if pressed => state.two_player = !state.two_player,
-                    Some(VirtualKeyCode::V) if pressed && !state.two_player => state.toggle_solo_character(),
+                    Some(VirtualKeyCode::V) if pressed && !state.two_player => {
+                        state.toggle_solo_character();
+                        let theme = match state.solo_character {
+                            PlayableCharacter::Maid => audio::Theme::Maid,
+                            PlayableCharacter::Helper => audio::Theme::Helper,
+                        };
+                        bgm = audio::play_theme(theme);
+                    }
                     Some(VirtualKeyCode::Escape) => *control_flow = ControlFlow::Exit,
                     _ => {}
                 }
