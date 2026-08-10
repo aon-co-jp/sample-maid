@@ -60,6 +60,7 @@
 
 mod audio;
 mod font;
+mod sprite;
 
 use std::ffi::CString;
 
@@ -628,14 +629,19 @@ impl Renderer {
 
         // メイド=ピンク、助っ人(風天のトラさん)=茶+橙のオマージュ色、魔女=紫、
         // HPバー=緑、アシストフラッシュ=白。
-        let (maid_image, maid_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 240, g: 150, b: 190, a: 255 })?;
-        let (helper_image, helper_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 200, g: 120, b: 50, a: 255 })?;
-        let (witch_image, witch_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 120, g: 40, b: 160, a: 255 })?;
+        let (maid_image, maid_view) =
+            create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &sprite::rasterize(sprite::MAID, sprite::maid_palette, 3))?;
+        let (helper_image, helper_view) =
+            create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &sprite::rasterize(sprite::HELPER, sprite::helper_palette, 3))?;
+        let (witch_image, witch_view) =
+            create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &sprite::rasterize(sprite::WITCH, sprite::witch_palette, 3))?;
         let (maid_hp_image, maid_hp_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 60, g: 220, b: 90, a: 255 })?;
         let (witch_hp_image, witch_hp_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 220, g: 60, b: 60, a: 255 })?;
         let (assist_flash_image, assist_flash_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 255, g: 255, b: 255, a: 255 })?;
-        let (enemy_notally_image, enemy_notally_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 150, g: 50, b: 170, a: 255 })?;
-        let (enemy_ally_image, enemy_ally_view) = create_solid_texture(&device, &memory_properties, queue, queue_family_index, Rgba8 { r: 90, g: 200, b: 230, a: 255 })?;
+        let (enemy_notally_image, enemy_notally_view) =
+            create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &sprite::rasterize(sprite::ENEMY, sprite::enemy_notally_palette, 3))?;
+        let (enemy_ally_image, enemy_ally_view) =
+            create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &sprite::rasterize(sprite::ENEMY, sprite::enemy_ally_palette, 3))?;
         let hud_texture = font::render_text_banner(HUD_TEXT, 3, Rgba8 { r: 255, g: 255, b: 255, a: 255 }, Rgba8 { r: 10, g: 10, b: 15, a: 255 });
         let (hud_image, hud_view) = create_texture_from_rgba(&device, &memory_properties, queue, queue_family_index, &hud_texture)?;
 
