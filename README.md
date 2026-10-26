@@ -6,7 +6,7 @@
 [`open-directx`](https://github.com/aon-co-jp/open-directx) の
 DXBC→SPIR-V翻訳済みスプライトパイプライン
 (`directx-shader-translate` / `directx-graphics-vulkan`)を
-Cargo pathの依存として再利用し、実ウィンドウ+Vulkanスワップチェーンで
+Cargoの依存(GitHubの`open-directx`)として再利用し、実ウィンドウ+Vulkanスワップチェーンで
 動作する。
 
 ## 現在のスコープ(Phase 0)
@@ -41,5 +41,18 @@ Escapeで終了。
 
 ## ディレクトリ構成
 
-`open-directx` を隣に(`../open-directx`)cloneしている前提の
-Cargo path依存になっている。
+`open-directx` はGitHubから自動取得されます(隣にcloneする必要はありません)。
+
+## 注意 / Notice
+
+登場する「風」のキャラクターは、特定の既存作品・人物・商品とは無関係の架空の設定です。実在のキャラクターの画像・音は使っていません。
+
+The "-style" characters are fictional and unrelated to any existing work, person or product. No existing character images or sounds are used.
+
+## ライセンス / License
+
+MIT(`LICENSE`参照)。 / MIT (see `LICENSE`).
+
+## 配布物 / Releases
+
+Windows (x86_64) のビルド済みバイナリは Releases から。Vulkan対応のGPUとドライバが必要です。他のOSは `cargo run --release`(`open-directx` はGitHubから自動取得されます)。 / Prebuilt Windows (x86_64) binary on the Releases page; a Vulkan-capable GPU and driver are required. Other OSes: `cargo run --release` (`open-directx` is fetched from GitHub automatically).
